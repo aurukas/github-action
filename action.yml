@@ -1,0 +1,18 @@
+name: 'Visual E2E testing with Ladybug'
+description: 'Run e2e tests'
+inputs:
+  suite-number:
+    description: 'The number of the test suite to run.'
+    required: false
+  test-number:
+    description: 'The number of the test to run.'
+    required: false
+  secret:
+    description: 'The secret to use for authentication.'
+    required: true
+outputs:
+  test-results:
+    description: 'The results of the test execution.'
+runs:
+  using: 'node18'
+  main: 'index.js'
