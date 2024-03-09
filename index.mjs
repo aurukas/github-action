@@ -1,6 +1,8 @@
-const core = require('@actions/core');
-const fetch = require('node-fetch');
-const { promisify } = require('util');
+// Assuming the environment is correctly set for ESM
+import * as core from '@actions/core';
+import fetch from 'node-fetch';
+import { promisify } from 'util';
+
 const sleep = promisify(setTimeout);
 
 // Function to initiate tests and return an execution ID
@@ -23,7 +25,7 @@ async function initiateTests(suiteNumber) {
     throw new Error(`Failed to initiate tests: ${response.statusText}`);
   }
 
-  return response.json(); // Assuming this contains { executionId: "..." }
+  return await response.json(); // Assuming this contains { executionId: "..." }
 }
 
 // Function to fetch and log the test results periodically
