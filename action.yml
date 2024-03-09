@@ -14,5 +14,5 @@ outputs:
   test-results:
     description: 'The results of the test execution.'
 runs:
-  using: 'node18'
+  using: 'node16'
   main: 'index.js'
