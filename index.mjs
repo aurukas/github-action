@@ -23,7 +23,7 @@ async function initiateTestSuite(suiteNumber) {
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to initiate tests: ${response.statusText}. All data received: ${JSON.stringify(await response.json())`);
+    throw new Error(`Failed to initiate tests: ${response.statusText}. All data received: ${JSON.stringify(await response.json())}`);
   }
 
   return await response.json(); // Assuming this contains { executionId: "..." }
