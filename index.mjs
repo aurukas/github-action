@@ -56,12 +56,15 @@ async function run() {
   try {
     const suiteNumber = core.getInput('suite-number', { required: false });
 
-    const { executionId } = await initiateTestSuite(suiteNumber);
+    const { executionId, testName, message, status } = await initiateTestSuite(suiteNumber);
 
     console.log(`Test suite initiated with execution ID: ${executionId}`);
+    console.log('Test suite name:', testName);
+    console.log('Message:', message);
+    console.log('Status:', status);
     console.log('Fetching and logging test results...');
 
-    await fetchAndLogResults(executionId);
+    // await fetchAndLogResults(executionId);
     // After fetching final results, decide on success or failure
     // This could involve another fetch to get the final decision or analyzing the last fetched results
     // For simplicity, assuming success if we reach this point without errors
