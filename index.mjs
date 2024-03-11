@@ -28,27 +28,6 @@ async function initiateTestSuite(suiteNumber) {
   return await response.json(); // Assuming this contains { executionId: "..." }
 }
 
-async function initiateTest(testNumber) {
-  const url = `http://${domain}/launch/test/${testNumber}`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer YOUR_API_TOKEN',
-      'User-Agent': 'GitHub-Actions-Test-Runner'
-    },
-    body: JSON.stringify({
-      secret: core.getInput('secret', {required: true})
-    })
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to initiate tests: ${response.statusText}`);
-  }
-
-  return await response.json(); // Assuming this contains { executionId: "..." }
-}
-
 // Function to fetch and log the test results periodically
 async function fetchAndLogResults(executionId) {
   let finished = false;
@@ -77,16 +56,7 @@ async function run() {
     const suiteNumber = core.getInput('suite-number', { required: false });
     const testNumber = core.getInput('test-number', { required: false });
 
-    let executionId = null;
-    if (suiteNumber) {
-      const result = await initiateTestSuite(suiteNumber);
-      executionId = result.executionId;
-    } else if (testNumber) {
-      const result = await initiateTest(testNumber);
-      executionId = result.executionId;
-    } else {
-      throw new Error('Either suite-number or test-number must be provided');
-    }
+    const { executionId } = await initiateTestSuite(suiteNumber);
 
     console.log(`Test ${suiteNumber ? 'suite' : ''} initiated with execution ID: ${executionId}`);
     console.log('Fetching and logging test results...');
