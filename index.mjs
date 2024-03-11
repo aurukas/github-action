@@ -23,7 +23,7 @@ async function initiateTestSuite(suiteNumber) {
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to initiate tests: ${response.statusText}`);
+    throw new Error(`Failed to initiate tests: ${response.message}`);
   }
 
   return await response.json(); // Assuming this contains { executionId: "..." }
