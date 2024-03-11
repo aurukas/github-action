@@ -17,6 +17,7 @@ async function initiateTestSuite(suiteNumber) {
       'User-Agent': 'GitHub-Actions-Test-Runner'
     },
     body: JSON.stringify({
+      apiKey: core.getInput('api-key', {required: true}),
       secret: core.getInput('secret', {required: true})
     })
   });
@@ -54,11 +55,10 @@ async function fetchAndLogResults(executionId) {
 async function run() {
   try {
     const suiteNumber = core.getInput('suite-number', { required: false });
-    const testNumber = core.getInput('test-number', { required: false });
 
     const { executionId } = await initiateTestSuite(suiteNumber);
 
-    console.log(`Test ${suiteNumber ? 'suite' : ''} initiated with execution ID: ${executionId}`);
+    console.log(`Test suite initiated with execution ID: ${executionId}`);
     console.log('Fetching and logging test results...');
 
     await fetchAndLogResults(executionId);

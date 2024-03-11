@@ -3,10 +3,10 @@ description: 'Run e2e tests'
 inputs:
   suite-number:
     description: 'The number of the test suite to run.'
-    required: false
-  test-number:
-    description: 'The number of the test to run.'
-    required: false
+    required: true
+  api-key:
+    description: 'The API key to use for authentication.'
+    required: true
   secret:
     description: 'The secret to use for authentication.'
     required: true
