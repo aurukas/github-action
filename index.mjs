@@ -5,10 +5,31 @@ import { promisify } from 'util';
 
 const sleep = promisify(setTimeout);
 
-// Function to initiate tests and return an execution ID
-async function initiateTests(suiteNumber) {
-  const url = `https://testing-saas.com/launch/suite/${suiteNumber}`;
-  // Setup the request as needed (method, headers, etc.)
+const domain = '54.158.10.249';
+
+async function initiateTestSuite(suiteNumber) {
+  const url = `http://${domain}/launch/suite/${suiteNumber}`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'User-Agent': 'GitHub-Actions-Test-Runner'
+    },
+    body: JSON.stringify({
+      secret: core.getInput('secret', {required: true})
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to initiate tests: ${response.statusText}`);
+  }
+
+  return await response.json(); // Assuming this contains { executionId: "..." }
+}
+
+async function initiateTest(testNumber) {
+  const url = `http://${domain}/launch/test/${testNumber}`;
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -32,7 +53,7 @@ async function initiateTests(suiteNumber) {
 async function fetchAndLogResults(executionId) {
   let finished = false;
   do {
-    const url = `https://testing-saas.com/results/${executionId}`;
+    const url = `https://${domain}/results/${executionId}`;
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`Failed to fetch results: ${response.statusText}`);
@@ -53,14 +74,24 @@ async function fetchAndLogResults(executionId) {
 
 async function run() {
   try {
-    const suiteNumber = core.getInput('suite-number', { required: true });
-    const { executionId } = await initiateTests(suiteNumber);
+    const suiteNumber = core.getInput('suite-number', { required: false });
+    const testNumber = core.getInput('test-number', { required: false });
 
-    console.log(`Test suite initiated. Execution ID: ${executionId}`);
+    let executionId = null;
+    if (suiteNumber) {
+      const result = await initiateTestSuite(suiteNumber);
+      executionId = result.executionId;
+    } else if (testNumber) {
+      const result = await initiateTest(testNumber);
+      executionId = result.executionId;
+    } else {
+      throw new Error('Either suite-number or test-number must be provided');
+    }
+
+    console.log(`Test ${suiteNumber ? 'suite' : ''} initiated with execution ID: ${executionId}`);
     console.log('Fetching and logging test results...');
 
     await fetchAndLogResults(executionId);
-
     // After fetching final results, decide on success or failure
     // This could involve another fetch to get the final decision or analyzing the last fetched results
     // For simplicity, assuming success if we reach this point without errors

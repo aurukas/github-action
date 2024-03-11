@@ -1,4 +1,4 @@
-name: 'Visual E2E testing with Ladybug'
+name: 'Visual E2E testing with Testube'
 description: 'Run e2e tests'
 inputs:
   suite-number:
