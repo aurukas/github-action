@@ -37,7 +37,13 @@ async function fetchAndLogResults(suiteNumber) {
   let finished = false;
   do {
     const url = `http://${domain}/api/results/${suiteNumber}`;
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${core.getInput('api-key', {required: true})}`,
+      }
+    });
 
     const responseBody = await response.text();
     console.log(`Raw response body: ${responseBody}`);
