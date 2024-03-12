@@ -33,22 +33,29 @@ async function initiateTestSuite(suiteNumber) {
 }
 
 // Function to fetch and log the test results periodically
-async function fetchAndLogResults(executionId) {
+async function fetchAndLogResults(suiteNumber) {
   let finished = false;
   do {
-    const url = `https://${domain}/results/${executionId}`;
+    const url = `https://${domain}/api/results/${suiteNumber}`;
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`Failed to fetch results: ${response.statusText}`);
     }
-    const { completed, results } = await response.json(); // Assuming this structure
+    const { status, progress, totalTests } = await response.json(); // Assuming this structure
+
+    console.log(`Progress: ${progress}/${totalTests}, Status: ${status}`);
 
     // Log current test statuses
-    results.forEach(result => {
-      console.log(`Test: ${result.testName}, Status: ${result.status}`);
-    });
+    // results.forEach(result => {
+    //   console.log(`Test: ${result.testName}, Status: ${result.status}`);
+    // });
 
-    finished = completed;
+    finished = status === 'completed'
+
+    if (status === 'failed') {
+      throw new Error('Test suite failed');
+    }
+
     if (!finished) {
       await sleep(5000); // Wait for 5 seconds before polling again
     }
@@ -67,7 +74,7 @@ async function run() {
     console.log('Status:', status);
     console.log('Fetching and logging test results...');
 
-    // await fetchAndLogResults(executionId);
+    await fetchAndLogResults(suiteNumber);
     // After fetching final results, decide on success or failure
     // This could involve another fetch to get the final decision or analyzing the last fetched results
     // For simplicity, assuming success if we reach this point without errors
