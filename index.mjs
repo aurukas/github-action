@@ -36,7 +36,7 @@ async function initiateTestSuite(suiteNumber) {
 async function fetchAndLogResults(suiteNumber) {
   let finished = false;
   do {
-    const url = `https://${domain}/api/results/${suiteNumber}`;
+    const url = `http://${domain}/api/results/${suiteNumber}`;
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`Failed to fetch results: ${response.statusText}`);
