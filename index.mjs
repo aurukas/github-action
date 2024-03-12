@@ -8,7 +8,7 @@ const sleep = promisify(setTimeout);
 const domain = '54.158.10.249';
 
 async function initiateTestSuite(suiteNumber) {
-  const url = `http://${domain}/launch/suite/${suiteNumber}`;
+  const url = `http://${domain}/api/launch/suite/${suiteNumber}`;
   const apiKey = core.getInput('api-key', {required: true})
   const response = await fetch(url, {
     method: 'POST',
