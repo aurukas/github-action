@@ -9,15 +9,15 @@ const domain = '54.158.10.249';
 
 async function initiateTestSuite(suiteNumber) {
   const url = `http://${domain}/launch/suite/${suiteNumber}`;
+  const apiKey = core.getInput('api-key', {required: true})
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer YOUR_API_TOKEN',
+      'Authorization': `Bearer ${apiKey}`,
       'User-Agent': 'GitHub-Actions-Test-Runner'
     },
     body: JSON.stringify({
-      apiKey: core.getInput('api-key', {required: true}),
       secret: core.getInput('secret', {required: true})
     })
   });
