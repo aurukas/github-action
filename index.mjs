@@ -22,8 +22,8 @@ async function initiateTestSuite(suiteNumber) {
     })
   });
 
-  // const responseBody = await response.text();
-  // console.log(`Raw response body: ${responseBody}`);
+  const responseBody = await response.text();
+  console.log(`Raw response body: ${responseBody}`);
 
   if (!response.ok) {
     throw new Error(`Failed to initiate tests: ${response.statusText}. Status code: ${response.status}`);
@@ -35,10 +35,13 @@ async function initiateTestSuite(suiteNumber) {
 // Function to fetch and log the test results periodically
 async function fetchAndLogResults(suiteNumber) {
   let finished = false;
+  let prevProgress = 0;
+  let prevStatus = 'pending';
+
   const startTime = Date.now();
   do {
     const currentTime = Date.now();
-    if ((currentTime - startTime) > 300000) { // 5 minutes in milliseconds
+    if ((currentTime - startTime) > 180000) { // 3 minutes in milliseconds
       throw new Error('Test suite timed out after 5 minutes');
     }
 
@@ -56,7 +59,10 @@ async function fetchAndLogResults(suiteNumber) {
     }
     const { status, progress, totalTests } = await response.json();
 
-    console.log(`Progress: ${progress}/${totalTests}, Status: ${status}`);
+    if (progress > prevProgress) {
+      console.log(`Progress: ${progress}/${totalTests}, Status: ${status}`);
+      prevProgress = progress;
+    }
 
     finished = status === 'completed';
 
