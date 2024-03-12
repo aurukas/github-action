@@ -38,6 +38,10 @@ async function fetchAndLogResults(suiteNumber) {
   do {
     const url = `http://${domain}/api/results/${suiteNumber}`;
     const response = await fetch(url);
+
+    const responseBody = await response.text();
+    console.log(`Raw response body: ${responseBody}`);
+
     if (!response.ok) {
       throw new Error(`Failed to fetch results: ${response.statusText}`);
     }
