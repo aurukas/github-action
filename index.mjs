@@ -22,6 +22,9 @@ async function initiateTestSuite(suiteNumber) {
     })
   });
 
+  const responseBody = await response.text();
+  console.log(`Raw response body: ${responseBody}`);
+
   if (!response.ok) {
     throw new Error(`Failed to initiate tests: ${response.statusText}. Status code: ${response.status}`);
   }
