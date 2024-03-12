@@ -35,7 +35,13 @@ async function initiateTestSuite(suiteNumber) {
 // Function to fetch and log the test results periodically
 async function fetchAndLogResults(suiteNumber) {
   let finished = false;
+  const startTime = Date.now();
   do {
+    const currentTime = Date.now();
+    if ((currentTime - startTime) > 300000) { // 5 minutes in milliseconds
+      throw new Error('Test suite timed out after 5 minutes');
+    }
+
     const url = `http://${domain}/api/results/${suiteNumber}`;
     const response = await fetch(url, {
       method: 'GET',
@@ -45,22 +51,14 @@ async function fetchAndLogResults(suiteNumber) {
       }
     });
 
-    const responseBody = await response.text();
-    console.log(`Raw response body: ${responseBody}`);
-
     if (!response.ok) {
       throw new Error(`Failed to fetch results: ${response.statusText}`);
     }
-    const { status, progress, totalTests } = await response.json(); // Assuming this structure
+    const { status, progress, totalTests } = await response.json();
 
     console.log(`Progress: ${progress}/${totalTests}, Status: ${status}`);
 
-    // Log current test statuses
-    // results.forEach(result => {
-    //   console.log(`Test: ${result.testName}, Status: ${result.status}`);
-    // });
-
-    finished = status === 'completed'
+    finished = status === 'completed';
 
     if (status === 'failed') {
       throw new Error('Test suite failed');
