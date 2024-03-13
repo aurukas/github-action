@@ -88,7 +88,7 @@ async function run() {
     console.log('Status:', status);
     console.log('Fetching and logging test results...');
 
-    await fetchAndLogResults(suiteNumber);
+    // await fetchAndLogResults(suiteNumber);
     // After fetching final results, decide on success or failure
     // This could involve another fetch to get the final decision or analyzing the last fetched results
     // For simplicity, assuming success if we reach this point without errors
