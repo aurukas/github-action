@@ -1,18 +1,46 @@
-name: 'Visual E2E testing with Testube'
-description: 'Run e2e tests'
+name: 'DontBreak — Run E2E Test Suite'
+description: 'Launch a DontBreak visual end-to-end test suite and optionally wait for the result to gate your pipeline.'
+author: 'DontBreak'
+branding:
+  icon: 'check-circle'
+  color: 'green'
 inputs:
-  suite-number:
-    description: 'The number of the test suite to run.'
+  suite-id:
+    description: 'The ID of the DontBreak test suite to run.'
     required: true
   api-key:
-    description: 'The API key to use for authentication.'
+    description: 'The DontBreak API key used to authenticate the request.'
     required: true
   secret:
-    description: 'The secret to use for authentication.'
+    description: 'The DontBreak suite secret used to authenticate the launch request.'
     required: true
+  base-url:
+    description: 'Base URL of the DontBreak API.'
+    required: false
+    default: 'https://app.dontbreak.io'
+  wait:
+    description: "Whether to wait for the suite run to reach a terminal status before finishing the action. Set to 'false' to fire-and-forget."
+    required: false
+    default: 'true'
+  timeout-minutes:
+    description: 'Maximum number of minutes to wait for the suite run to finish before failing with a timeout.'
+    required: false
+    default: '30'
+  poll-interval:
+    description: 'Number of seconds to wait between status polls.'
+    required: false
+    default: '10'
 outputs:
-  test-results:
-    description: 'The results of the test execution.'
+  run-id:
+    description: 'The unique run ID for this suite execution.'
+  status:
+    description: "Final status of the run: 'running' (when wait is false), 'passed', 'failed', 'cancelled', or 'timeout'."
+  passed:
+    description: 'Number of tests that passed.'
+  failed:
+    description: 'Number of tests that failed.'
+  report-url:
+    description: 'Link to the full DontBreak report for this run.'
 runs:
-  using: 'node16'
+  using: 'node20'
   main: 'index.mjs'

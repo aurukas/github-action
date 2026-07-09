@@ -1,101 +1,355 @@
-// Assuming the environment is correctly set for ESM
-import * as core from '@actions/core';
-import fetch from 'node-fetch';
-import { promisify } from 'util';
+// DontBreak GitHub Action
+//
+// Zero-dependency implementation: Node 20 built-ins only (global fetch, fs).
+// Re-implements the tiny slice of @actions/core we need by hand so the
+// action ships with no node_modules and no supply-chain surface.
 
-const sleep = promisify(setTimeout);
+import { appendFileSync } from 'node:fs';
 
-const domain = '54.158.10.249';
+// ---------------------------------------------------------------------------
+// Minimal actions-toolkit shim
+// ---------------------------------------------------------------------------
 
-async function initiateTestSuite(suiteNumber) {
-  const url = `http://${domain}/api/launch/suite/${suiteNumber}`;
-  const apiKey = core.getInput('api-key', {required: true})
-  const response = await fetch(url, {
+/**
+ * GitHub exposes each workflow input as an environment variable named
+ * INPUT_<name>, where <name> is the input name upper-cased and with spaces
+ * turned into underscores. Dashes are left untouched, so `suite-id` becomes
+ * `INPUT_SUITE-ID` (verified against GitHub's documented convention and by
+ * inspecting `env | grep INPUT_` inside a live workflow run).
+ */
+function getInput(name, { required = false } = {}) {
+  const envName = `INPUT_${name.replace(/ /g, '_').toUpperCase()}`;
+  const value = process.env[envName] ?? '';
+  const trimmed = value.trim();
+  if (required && trimmed === '') {
+    throw new Error(`Input required and not supplied: ${name}`);
+  }
+  return trimmed;
+}
+
+function getInputOrDefault(name, defaultValue) {
+  const value = getInput(name);
+  return value === '' ? defaultValue : value;
+}
+
+/** Escape a value for the `::workflow-command key=value::` wire format. */
+function escapeData(value) {
+  return String(value)
+    .replace(/%/g, '%25')
+    .replace(/\r/g, '%0D')
+    .replace(/\n/g, '%0A');
+}
+
+function errorAnnotation(message) {
+  console.log(`::error::${escapeData(message)}`);
+}
+
+function warningAnnotation(message) {
+  console.log(`::warning::${escapeData(message)}`);
+}
+
+/** Append a single `name=value` line to $GITHUB_OUTPUT. */
+function setOutput(name, value) {
+  const outputPath = process.env.GITHUB_OUTPUT;
+  const line = `${name}=${value}\n`;
+  if (!outputPath) {
+    // Not running inside GitHub Actions (or not wired up for a local test
+    // run) - fall back to stdout so nothing is silently lost.
+    warningAnnotation(`GITHUB_OUTPUT is not set; would have written: ${line.trim()}`);
+    return;
+  }
+  appendFileSync(outputPath, line);
+}
+
+/** Append a chunk of Markdown to the job summary. */
+function writeSummary(markdown) {
+  const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+  if (!summaryPath) {
+    warningAnnotation('GITHUB_STEP_SUMMARY is not set; skipping job summary.');
+    return;
+  }
+  appendFileSync(summaryPath, markdown);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ---------------------------------------------------------------------------
+// DontBreak API client
+// ---------------------------------------------------------------------------
+
+const TERMINAL_STATUSES = new Set(['passed', 'failed', 'cancelled']);
+const MAX_CONSECUTIVE_POLL_FAILURES = 3;
+
+/**
+ * Perform a fetch and normalize the three ways it can go wrong:
+ * a network-level failure, a non-2xx HTTP status, and a 2xx response body
+ * that isn't valid JSON.
+ */
+async function requestJson(url, options) {
+  let response;
+  try {
+    response = await fetch(url, options);
+  } catch (err) {
+    return { networkError: err };
+  }
+
+  const text = await response.text();
+  let data = null;
+  let parseError = null;
+  if (text.length > 0) {
+    try {
+      data = JSON.parse(text);
+    } catch (err) {
+      parseError = err;
+    }
+  }
+
+  return { response, text, data, parseError };
+}
+
+function summarizeBody(text) {
+  if (!text) return '(empty body)';
+  const trimmed = text.trim();
+  return trimmed.length > 200 ? `${trimmed.slice(0, 200)}…` : trimmed;
+}
+
+async function launchSuite({ baseUrl, suiteId, apiKey, secret }) {
+  const url = `${baseUrl}/api/launch/suite/${encodeURIComponent(suiteId)}`;
+  const result = await requestJson(url, {
     method: 'POST',
     headers: {
+      Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-      'User-Agent': 'GitHub-Actions-Test-Runner'
+      Accept: 'application/json',
     },
-    body: JSON.stringify({
-      secret: core.getInput('secret', {required: true})
-    })
+    body: JSON.stringify({ secret }),
   });
 
-  // const responseBody = await response.text();
-  // console.log(`Raw response body: ${responseBody}`);
+  if (result.networkError) {
+    throw new Error(`Network error while launching suite ${suiteId}: ${result.networkError.message}`);
+  }
+
+  const { response, data, parseError, text } = result;
 
   if (!response.ok) {
-    throw new Error(`Failed to initiate tests: ${response.statusText}. Status code: ${response.status}`);
+    const message = data && data.message ? data.message : summarizeBody(text);
+    throw new Error(`Failed to launch suite (HTTP ${response.status}): ${message}`);
   }
 
-  return await response.json(); // Assuming this contains { executionId: "..." }
+  if (parseError || !data) {
+    throw new Error(
+      `Launch request returned HTTP ${response.status} but the response body was not valid JSON: ${summarizeBody(text)}`
+    );
+  }
+
+  if (data.status === 'error') {
+    throw new Error(`Failed to launch suite: ${data.message || 'unknown error'}`);
+  }
+
+  return data;
 }
 
-// Function to fetch and log the test results periodically
-async function fetchAndLogResults(suiteNumber) {
-  let finished = false;
-  let prevProgress = 0;
-  let prevStatus = 'pending';
+async function fetchRunStatus({ baseUrl, runId, apiKey }) {
+  const url = `${baseUrl}/api/results/run/${encodeURIComponent(runId)}`;
+  const result = await requestJson(url, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      Accept: 'application/json',
+    },
+  });
 
-  const startTime = Date.now();
-  do {
-    const currentTime = Date.now();
-    if ((currentTime - startTime) > 180000) { // 3 minutes in milliseconds
-      throw new Error('Test suite timed out after 5 minutes');
-    }
+  if (result.networkError) {
+    throw new Error(`Network error while polling run ${runId}: ${result.networkError.message}`);
+  }
 
-    const url = `http://${domain}/api/results/${suiteNumber}`;
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${core.getInput('api-key', {required: true})}`,
-      },
-    });
+  const { response, data, parseError, text } = result;
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch results: ${response.statusText}`);
-    }
-    const { status, progress, totalTests } = await response.json();
+  if (!response.ok) {
+    const message = data && data.message ? data.message : summarizeBody(text);
+    throw new Error(`Failed to fetch run status (HTTP ${response.status}): ${message}`);
+  }
 
-    if (progress > prevProgress) {
-      console.log(`Progress: ${progress}/${totalTests}, Status: ${status}`);
-      prevProgress = progress;
-    }
+  if (parseError || !data) {
+    throw new Error(
+      `Status request returned HTTP ${response.status} but the response body was not valid JSON: ${summarizeBody(text)}`
+    );
+  }
 
-    finished = status === 'completed';
-
-    if (status === 'failed') {
-      throw new Error('Test suite failed');
-    }
-
-    if (!finished) {
-      await sleep(5000); // Wait for 5 seconds before polling again
-    }
-  } while (!finished);
+  return data;
 }
+
+/**
+ * Poll `fetchRunStatus` until a terminal status is reached or the timeout
+ * elapses. Tolerates up to MAX_CONSECUTIVE_POLL_FAILURES consecutive
+ * transport/parse errors before giving up, so a single flaky response
+ * doesn't fail the whole run.
+ */
+async function pollUntilTerminal({ baseUrl, runId, apiKey, pollIntervalMs, timeoutMs, now = Date.now, wait = sleep }) {
+  const deadline = now() + timeoutMs;
+  let consecutiveFailures = 0;
+
+  while (true) {
+    let result;
+    try {
+      result = await fetchRunStatus({ baseUrl, runId, apiKey });
+      consecutiveFailures = 0;
+    } catch (err) {
+      consecutiveFailures += 1;
+      warningAnnotation(
+        `Poll attempt failed (${consecutiveFailures}/${MAX_CONSECUTIVE_POLL_FAILURES}): ${err.message}`
+      );
+      if (consecutiveFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
+        throw new Error(`Giving up after ${MAX_CONSECUTIVE_POLL_FAILURES} consecutive polling failures: ${err.message}`);
+      }
+      result = null;
+    }
+
+    if (result) {
+      console.log(
+        `Status: ${result.status}${result.totalTests != null ? ` (${result.passed ?? 0}/${result.totalTests} passed)` : ''}`
+      );
+      if (TERMINAL_STATUSES.has(result.status)) {
+        return { timedOut: false, result };
+      }
+    }
+
+    if (now() >= deadline) {
+      return { timedOut: true, result };
+    }
+
+    await wait(pollIntervalMs);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Job summary
+// ---------------------------------------------------------------------------
+
+function buildSummaryMarkdown({ testName, status, passed, failed, totalTests, durationMs, reportUrl }) {
+  const lines = [
+    '## DontBreak — E2E Test Suite',
+    '',
+    `**Suite:** ${testName || '(unnamed)'}`,
+    `**Result:** ${status}`,
+    `**Passed:** ${passed ?? 'n/a'}${totalTests != null ? ` / ${totalTests}` : ''}`,
+    `**Failed:** ${failed ?? 'n/a'}`,
+  ];
+  if (durationMs != null) {
+    lines.push(`**Duration:** ${(durationMs / 1000).toFixed(1)}s`);
+  }
+  if (reportUrl) {
+    lines.push('', `[View full report](${reportUrl})`);
+  }
+  lines.push('');
+  return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
 
 async function run() {
-  try {
-    const suiteNumber = core.getInput('suite-number', { required: false });
+  const suiteId = getInput('suite-id', { required: true });
+  const apiKey = getInput('api-key', { required: true });
+  const secret = getInput('secret', { required: true });
+  const baseUrl = getInputOrDefault('base-url', 'https://app.dontbreak.io').replace(/\/+$/, '');
+  const waitInput = getInputOrDefault('wait', 'true').toLowerCase();
+  const shouldWait = waitInput !== 'false' && waitInput !== '0' && waitInput !== 'no';
+  const timeoutMinutes = Number(getInputOrDefault('timeout-minutes', '30')) || 30;
+  const pollIntervalSeconds = Number(getInputOrDefault('poll-interval', '10')) || 10;
 
-    const { executionId, testName, message, status } = await initiateTestSuite(suiteNumber);
+  console.log(`Launching DontBreak suite ${suiteId} against ${baseUrl}...`);
+  const launch = await launchSuite({ baseUrl, suiteId, apiKey, secret });
 
-    console.log(`Test suite initiated with execution ID: ${executionId}`);
-    console.log('Test suite name:', testName);
-    console.log('Message:', message);
-    console.log('Status:', status);
-    console.log('Fetching and logging test results...');
+  const runId = launch.runId;
+  console.log(`Run started: ${runId} (${launch.testName || 'unnamed suite'})`);
+  if (launch.message) {
+    console.log(launch.message);
+  }
+  console.log(`Launched ${launch.launched ?? '?'} of ${launch.totalTests ?? '?'} tests.`);
 
-    // await fetchAndLogResults(suiteNumber);
-    // After fetching final results, decide on success or failure
-    // This could involve another fetch to get the final decision or analyzing the last fetched results
-    // For simplicity, assuming success if we reach this point without errors
-    core.setOutput('test-results', 'Success');
-  } catch (error) {
-    core.setFailed(`Action failed with error: ${error.message}`);
+  setOutput('run-id', runId ?? '');
+
+  if (!shouldWait) {
+    setOutput('status', 'running');
+    setOutput('passed', '');
+    setOutput('failed', '');
+    setOutput('report-url', '');
+    writeSummary(
+      buildSummaryMarkdown({
+        testName: launch.testName,
+        status: 'running (not waited for)',
+        passed: undefined,
+        failed: undefined,
+        totalTests: launch.totalTests,
+      })
+    );
+    console.log('wait=false: not waiting for the run to finish.');
+    return;
+  }
+
+  const { timedOut, result } = await pollUntilTerminal({
+    baseUrl,
+    runId,
+    apiKey,
+    pollIntervalMs: pollIntervalSeconds * 1000,
+    timeoutMs: timeoutMinutes * 60 * 1000,
+  });
+
+  const finalStatus = timedOut ? 'timeout' : result.status;
+  const passed = result ? result.passed ?? 0 : 0;
+  const failed = result ? result.failed ?? 0 : 0;
+  const reportUrl = result ? result.reportUrl ?? '' : '';
+
+  setOutput('status', finalStatus);
+  setOutput('passed', String(passed));
+  setOutput('failed', String(failed));
+  setOutput('report-url', reportUrl);
+
+  writeSummary(
+    buildSummaryMarkdown({
+      testName: launch.testName,
+      status: finalStatus,
+      passed,
+      failed,
+      totalTests: result ? result.totalTests : launch.totalTests,
+      durationMs: result ? result.durationMs : undefined,
+      reportUrl,
+    })
+  );
+
+  if (timedOut) {
+    errorAnnotation(
+      `Timed out after ${timeoutMinutes} minute(s) waiting for run ${runId} to finish (last known status: ${
+        result ? result.status : 'unknown'
+      }).`
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  console.log(`Final status: ${finalStatus}. Passed: ${passed}, Failed: ${failed}.`);
+  if (reportUrl) {
+    console.log(`Report: ${reportUrl}`);
+  }
+
+  if (finalStatus === 'failed' || finalStatus === 'cancelled') {
+    errorAnnotation(`DontBreak suite run ${runId} finished with status "${finalStatus}" (${passed} passed, ${failed} failed).`);
+    process.exitCode = 1;
   }
 }
 
-run();
+// Only auto-run when executed directly (`node index.mjs`), not when imported
+// by unit tests.
+const isMainModule = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
+if (isMainModule) {
+  run().catch((err) => {
+    errorAnnotation(err && err.message ? err.message : String(err));
+    process.exitCode = 1;
+  });
+}
+
+export { getInput, getInputOrDefault, requestJson, pollUntilTerminal, buildSummaryMarkdown, run };
