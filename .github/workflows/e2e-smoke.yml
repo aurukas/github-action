@@ -11,6 +11,13 @@ on:
         description: 'Base URL of the DontBreak API (e.g. a tunnel URL for testing against a non-production backend)'
         required: true
         type: string
+  # Push trigger lets the branch be exercised without the workflow living on the
+  # default branch (a workflow_dispatch-only workflow on a feature branch is not
+  # dispatchable). Ephemeral test inputs come from repo variables.
+  push:
+    branches: [dontbreak-v2]
+    paths:
+      - '.github/workflows/e2e-smoke.yml'
 
 jobs:
   run-suite:
@@ -20,26 +27,45 @@ jobs:
 
       - name: Run DontBreak suite
         id: dontbreak
+        continue-on-error: true
         uses: ./
         with:
-          suite-id: ${{ inputs.suite-id }}
+          suite-id: ${{ inputs.suite-id || vars.TEST_SUITE_ID }}
           api-key: ${{ secrets.DONTBREAK_API_KEY }}
           secret: ${{ secrets.DONTBREAK_SECRET }}
-          base-url: ${{ inputs.base-url }}
+          base-url: ${{ inputs.base-url || vars.TEST_BASE_URL }}
           wait: 'true'
           timeout-minutes: '15'
 
       - name: Show outputs
         if: always()
         env:
+          OUTCOME: ${{ steps.dontbreak.outcome }}
           RUN_ID: ${{ steps.dontbreak.outputs.run-id }}
           STATUS: ${{ steps.dontbreak.outputs.status }}
           PASSED: ${{ steps.dontbreak.outputs.passed }}
           FAILED: ${{ steps.dontbreak.outputs.failed }}
           REPORT_URL: ${{ steps.dontbreak.outputs.report-url }}
         run: |
+          echo "action step outcome: $OUTCOME"
           echo "run-id: $RUN_ID"
           echo "status: $STATUS"
           echo "passed: $PASSED"
           echo "failed: $FAILED"
           echo "report-url: $REPORT_URL"
+
+      - name: Assert gate reflects run status
+        if: always()
+        env:
+          OUTCOME: ${{ steps.dontbreak.outcome }}
+          STATUS: ${{ steps.dontbreak.outputs.status }}
+        run: |
+          # The action gates the pipeline: a passing suite must succeed the step,
+          # any non-passing terminal status (failed/cancelled/timeout) must fail it.
+          if [ "$STATUS" = "passed" ] && [ "$OUTCOME" != "success" ]; then
+            echo "::error::Suite passed but the action step did not succeed"; exit 1
+          fi
+          if [ "$STATUS" != "passed" ] && [ -n "$STATUS" ] && [ "$OUTCOME" != "failure" ]; then
+            echo "::error::Suite status '$STATUS' should have failed the gate but the step outcome was '$OUTCOME'"; exit 1
+          fi
+          echo "Gate behaved correctly: status='$STATUS' → step outcome='$OUTCOME'"
