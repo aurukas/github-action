@@ -1,0 +1,45 @@
+name: E2E Smoke Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite-id:
+        description: 'DontBreak suite ID to launch'
+        required: true
+        type: string
+      base-url:
+        description: 'Base URL of the DontBreak API (e.g. a tunnel URL for testing against a non-production backend)'
+        required: true
+        type: string
+
+jobs:
+  run-suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run DontBreak suite
+        id: dontbreak
+        uses: ./
+        with:
+          suite-id: ${{ inputs.suite-id }}
+          api-key: ${{ secrets.DONTBREAK_API_KEY }}
+          secret: ${{ secrets.DONTBREAK_SECRET }}
+          base-url: ${{ inputs.base-url }}
+          wait: 'true'
+          timeout-minutes: '15'
+
+      - name: Show outputs
+        if: always()
+        env:
+          RUN_ID: ${{ steps.dontbreak.outputs.run-id }}
+          STATUS: ${{ steps.dontbreak.outputs.status }}
+          PASSED: ${{ steps.dontbreak.outputs.passed }}
+          FAILED: ${{ steps.dontbreak.outputs.failed }}
+          REPORT_URL: ${{ steps.dontbreak.outputs.report-url }}
+        run: |
+          echo "run-id: $RUN_ID"
+          echo "status: $STATUS"
+          echo "passed: $PASSED"
+          echo "failed: $FAILED"
+          echo "report-url: $REPORT_URL"
