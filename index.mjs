@@ -228,7 +228,7 @@ async function pollUntilTerminal({ baseUrl, runId, apiKey, pollIntervalMs, timeo
 // Job summary
 // ---------------------------------------------------------------------------
 
-function buildSummaryMarkdown({ testName, status, passed, failed, totalTests, durationMs, reportUrl }) {
+function buildSummaryMarkdown({ testName, status, passed, failed, totalTests, durationMs, reportUrl, partial, notLaunched }) {
   const lines = [
     '## DontBreak — E2E Test Suite',
     '',
@@ -236,6 +236,7 @@ function buildSummaryMarkdown({ testName, status, passed, failed, totalTests, du
     `**Result:** ${status}`,
     `**Passed:** ${passed ?? 'n/a'}${totalTests != null ? ` / ${totalTests}` : ''}`,
     `**Failed:** ${failed ?? 'n/a'}`,
+    ...(partial ? [`**Partial run:** yes — ${notLaunched ?? 0} test(s) never launched`] : []),
   ];
   if (durationMs != null) {
     lines.push(`**Duration:** ${(durationMs / 1000).toFixed(1)}s`);
@@ -299,14 +300,15 @@ async function run() {
     timeoutMs: timeoutMinutes * 60 * 1000,
   });
 
-  const finalStatus = timedOut ? 'timeout' : result.status;
-  const passed = result ? result.passed ?? 0 : 0;
-  const failed = result ? result.failed ?? 0 : 0;
+  const outcome = decideOutcome(result, timedOut);
+  const { finalStatus, passed, failed, partial, notLaunched } = outcome;
   const reportUrl = result ? result.reportUrl ?? '' : '';
 
   setOutput('status', finalStatus);
   setOutput('passed', String(passed));
   setOutput('failed', String(failed));
+  setOutput('partial', String(partial));
+  setOutput('not-launched', String(notLaunched));
   setOutput('report-url', reportUrl);
 
   writeSummary(
@@ -318,6 +320,8 @@ async function run() {
       totalTests: result ? result.totalTests : launch.totalTests,
       durationMs: result ? result.durationMs : undefined,
       reportUrl,
+      partial,
+      notLaunched,
     })
   );
 
@@ -336,10 +340,39 @@ async function run() {
     console.log(`Report: ${reportUrl}`);
   }
 
-  if (finalStatus === 'failed' || finalStatus === 'cancelled') {
-    errorAnnotation(`DontBreak suite run ${runId} finished with status "${finalStatus}" (${passed} passed, ${failed} failed).`);
+  if (outcome.exitCode !== 0) {
+    errorAnnotation(`DontBreak suite run ${runId}: ${outcome.message}`);
     process.exitCode = 1;
   }
+}
+
+/**
+ * Decide whether the workflow step should go red. A run the API reports as
+ * `passed` can still be `partial` (some tests never launched — quota, capacity,
+ * or a cancelled stage), and a gate that only reads `status` would wave a
+ * half-executed suite through. Partial is therefore a failure here.
+ */
+function decideOutcome(result, timedOut) {
+  const finalStatus = timedOut ? 'timeout' : result ? result.status : 'unknown';
+  const passed = result ? result.passed ?? 0 : 0;
+  const failed = result ? result.failed ?? 0 : 0;
+  const partial = Boolean(result && result.partial);
+  const notLaunched = result ? result.notLaunched ?? 0 : 0;
+
+  let exitCode = 0;
+  let message = `finished with status "${finalStatus}" (${passed} passed, ${failed} failed).`;
+
+  if (timedOut) {
+    exitCode = 1;
+    message = `timed out (last known status: ${result ? result.status : 'unknown'}).`;
+  } else if (finalStatus === 'failed' || finalStatus === 'cancelled') {
+    exitCode = 1;
+  } else if (partial) {
+    exitCode = 1;
+    message = `finished with status "${finalStatus}" but the run was partial: ${notLaunched} test(s) never launched (${passed} passed, ${failed} failed). Treating as a failure.`;
+  }
+
+  return { finalStatus, passed, failed, partial, notLaunched, exitCode, message };
 }
 
 // Only auto-run when executed directly (`node index.mjs`), not when imported
@@ -352,4 +385,4 @@ if (isMainModule) {
   });
 }
 
-export { getInput, getInputOrDefault, requestJson, pollUntilTerminal, buildSummaryMarkdown, run };
+export { getInput, getInputOrDefault, requestJson, pollUntilTerminal, buildSummaryMarkdown, decideOutcome, run };

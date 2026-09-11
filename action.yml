@@ -39,6 +39,10 @@ outputs:
     description: 'Number of tests that passed.'
   failed:
     description: 'Number of tests that failed.'
+  partial:
+    description: '"true" when some suite tests never launched; the step fails in that case'
+  not-launched:
+    description: 'Number of suite tests that never launched'
   report-url:
     description: 'Link to the full DontBreak report for this run.'
 runs:

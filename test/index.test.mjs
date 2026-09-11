@@ -191,3 +191,29 @@ test('pollUntilTerminal gives up after 3 consecutive failures', async () => {
     global.fetch = originalFetch;
   }
 });
+
+// ─── partial runs must not gate green ────────────────────────────────────────
+
+test('decideOutcome fails a "passed" run that the API marks partial', async () => {
+  const { decideOutcome } = await import('../index.mjs');
+  const outcome = decideOutcome({ status: 'passed', passed: 3, failed: 0, partial: true, notLaunched: 2 }, false);
+  assert.equal(outcome.exitCode, 1);
+  assert.equal(outcome.partial, true);
+  assert.equal(outcome.notLaunched, 2);
+  assert.match(outcome.message, /partial/i);
+});
+
+test('decideOutcome keeps a clean passed run green', async () => {
+  const { decideOutcome } = await import('../index.mjs');
+  const outcome = decideOutcome({ status: 'passed', passed: 3, failed: 0, partial: false, notLaunched: 0 }, false);
+  assert.equal(outcome.exitCode, 0);
+  assert.equal(outcome.partial, false);
+});
+
+test('decideOutcome fails on failed, cancelled and timeout', async () => {
+  const { decideOutcome } = await import('../index.mjs');
+  assert.equal(decideOutcome({ status: 'failed', passed: 1, failed: 1 }, false).exitCode, 1);
+  assert.equal(decideOutcome({ status: 'cancelled', passed: 0, failed: 0 }, false).exitCode, 1);
+  assert.equal(decideOutcome({ status: 'running' }, true).exitCode, 1);
+  assert.equal(decideOutcome({ status: 'running' }, true).finalStatus, 'timeout');
+});

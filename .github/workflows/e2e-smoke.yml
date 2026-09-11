@@ -11,13 +11,6 @@ on:
         description: 'Base URL of the DontBreak API (e.g. a tunnel URL for testing against a non-production backend)'
         required: true
         type: string
-  # Push trigger lets the branch be exercised without the workflow living on the
-  # default branch (a workflow_dispatch-only workflow on a feature branch is not
-  # dispatchable). Ephemeral test inputs come from repo variables.
-  push:
-    branches: [dontbreak-v2]
-    paths:
-      - '.github/workflows/e2e-smoke.yml'
 
 jobs:
   run-suite:

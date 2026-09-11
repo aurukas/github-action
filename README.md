@@ -8,7 +8,7 @@ The action launches the suite through the DontBreak API, polls the run until it 
 
 ```yaml
 - name: Run DontBreak E2E suite
-  uses: aurukas/github-action@main
+  uses: aurukas/github-action@v1
   with:
     suite-id: 'your-suite-uuid'
     api-key: ${{ secrets.DONTBREAK_API_KEY }}
@@ -39,6 +39,8 @@ The action launches the suite through the DontBreak API, polls the run until it 
 | `status` | `passed`, `failed`, `cancelled`, `timeout`, or `running` (when `wait: 'false'`). |
 | `passed` | Number of tests that passed. |
 | `failed` | Number of tests that failed. |
+| `partial` | `true` when some suite tests never launched (quota, capacity, cancelled stage). The step fails in that case even if `status` is `passed`. |
+| `not-launched` | Number of suite tests that never launched. |
 | `report-url` | Link to the full report in DontBreak. |
 
 ## Gate behavior
@@ -55,7 +57,7 @@ A quota-exhausted or inactive subscription fails the launch immediately with a c
 
 ```yaml
 - name: Trigger DontBreak suite (don't wait)
-  uses: aurukas/github-action@main
+  uses: aurukas/github-action@v1
   with:
     suite-id: 'your-suite-uuid'
     api-key: ${{ secrets.DONTBREAK_API_KEY }}
@@ -75,7 +77,7 @@ curl -H "Authorization: Bearer $DONTBREAK_API_KEY" \
 ```yaml
 - name: Run DontBreak E2E suite
   id: e2e
-  uses: aurukas/github-action@main
+  uses: aurukas/github-action@v1
   with:
     suite-id: 'your-suite-uuid'
     api-key: ${{ secrets.DONTBREAK_API_KEY }}
