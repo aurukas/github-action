@@ -8,7 +8,7 @@ The action launches the suite through the DontBreak API, polls the run until it 
 
 ```yaml
 - name: Run DontBreak E2E suite
-  uses: aurukas/github-action@v1
+  uses: dontbreakio/action@v1
   with:
     suite-id: 'your-suite-uuid'
     api-key: ${{ secrets.DONTBREAK_API_KEY }}
@@ -57,7 +57,7 @@ A quota-exhausted or inactive subscription fails the launch immediately with a c
 
 ```yaml
 - name: Trigger DontBreak suite (don't wait)
-  uses: aurukas/github-action@v1
+  uses: dontbreakio/action@v1
   with:
     suite-id: 'your-suite-uuid'
     api-key: ${{ secrets.DONTBREAK_API_KEY }}
@@ -77,7 +77,7 @@ curl -H "Authorization: Bearer $DONTBREAK_API_KEY" \
 ```yaml
 - name: Run DontBreak E2E suite
   id: e2e
-  uses: aurukas/github-action@v1
+  uses: dontbreakio/action@v1
   with:
     suite-id: 'your-suite-uuid'
     api-key: ${{ secrets.DONTBREAK_API_KEY }}
